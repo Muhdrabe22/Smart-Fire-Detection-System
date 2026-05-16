@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>FireGuard — Smart Fire Detection</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <style>
+    /* ─── RESET & VARS ─── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0a0b0d;
+      --surface:   #111316;
+      --surface2:  #181b1f;
+      --border:    #242830;
+      --text:      #e8eaf0;
+      --muted:     #6b7280;
+      --accent:    #ff4528;
+      --warn:      #f59e0b;
+      --safe:      #22d3a5;
+      --blue:      #3b82f6;
+      --font-mono: 'DM Mono', monospace;
+      --font-body: 'Outfit', sans-serif;
+      --font-disp: 'Bebas Neue', sans-serif;
+    }
+
+    html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font-body); }
+
+    /* ─── LAYOUT ─── */
+    .shell { display: grid; grid-template-rows: auto 1fr; min-height: 100vh; }
+
+    /* ─── HEADER ─── */
+    header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 28px; height: 60px;
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      position: sticky; top: 0; z-index: 100;
+    }
+    .logo { display: flex; align-items: center; gap: 10px; }
+    .logo-icon {
+      width: 32px; height: 32px; border-radius: 8px;
+      background: var(--accent);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px; animation: pulse-icon 2s ease-in-out infinite;
+    }
+    @keyframes pulse-icon {
+      0%,100% { box-shadow: 0 0 0 0 rgba(255,69,40,.5); }
+      50%      { box-shadow: 0 0 0 8px rgba(255,69,40,0); }
+    }
+    .logo-text { font-family: var(--font-disp); font-size: 24px; letter-spacing: 2px; color: var(--text); }
+    .logo-sub  { font-family: var(--font-mono); font-size: 10px; color: var(--muted); }
+
+    .status-pill {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 14px; border-radius: 99px;
+      background: var(--surface2); border: 1px solid var(--border);
+      font-family: var(--font-mono); font-size: 12px;
+    }
+    .status-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--safe);
+      animation: blink 1.5s ease-in-out infinite;
+    }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+    /* ─── MAIN GRID ─── */
+    main { padding: 24px 28px; display: flex; flex-direction: column; gap: 20px; }
+
+    /* ─── ALERT BANNER ─── */
+    #alert-banner {
+      display: none; align-items: center; gap: 14px;
+      padding: 14px 20px; border-radius: 10px;
+      border: 1px solid var(--accent);
+      background: rgba(255,69,40,.08);
+      animation: flash-border 1s ease-in-out infinite;
+    }
+    #alert-banner.show { display: flex; }
+    @keyframes flash-border {
+      0%,100%{ border-color: var(--accent); }
+      50%{ border-color: rgba(255,69,40,.3); }
+    }
+    .banner-icon { font-size: 24px; }
+    .banner-msg  { flex: 1; }
+    .banner-title { font-weight: 600; color: var(--accent); margin-bottom: 2px; }
+    .banner-sub   { font-size: 13px; color: var(--muted); font-family: var(--font-mono); }
+
+    /* ─── STAT CARDS ─── */
+    .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+    @media (max-width: 900px) { .cards { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 500px) { .cards { grid-template-columns: 1fr; } }
+
+    .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; padding: 20px;
+      position: relative; overflow: hidden;
+      transition: border-color .2s;
+    }
+    .card:hover { border-color: #363b44; }
+    .card-accent { position: absolute; top: 0; left: 0; width: 3px; height: 100%; border-radius: 12px 0 0 12px; }
+    .card-label  { font-family: var(--font-mono); font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
+    .card-value  { font-family: var(--font-disp); font-size: 48px; line-height: 1; }
+    .card-unit   { font-size: 14px; color: var(--muted); margin-left: 4px; font-family: var(--font-body); }
+    .card-sub    { font-size: 12px; color: var(--muted); margin-top: 8px; font-family: var(--font-mono); }
+
+    /* ─── CHARTS ROW ─── */
+    .charts { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    @media (max-width: 800px) { .charts { grid-template-columns: 1fr; } }
+
+    .chart-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; padding: 20px;
+    }
+    .chart-title { font-family: var(--font-mono); font-size: 12px; color: var(--muted); margin-bottom: 14px; text-transform: uppercase; letter-spacing: 1px; }
+    canvas { width: 100% !important; }
+
+    /* ─── BOTTOM ROW ─── */
+    .bottom { display: grid; grid-template-columns: 1fr 340px; gap: 14px; }
+    @media (max-width: 960px) { .bottom { grid-template-columns: 1fr; } }
+
+    /* ─── ALERTS TABLE ─── */
+    .alerts-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; overflow: hidden;
+    }
+    .table-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 20px; border-bottom: 1px solid var(--border);
+    }
+    .table-title { font-family: var(--font-mono); font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+    .badge {
+      padding: 2px 10px; border-radius: 99px;
+      font-family: var(--font-mono); font-size: 11px;
+    }
+    .badge-danger  { background: rgba(255,69,40,.15); color: var(--accent); border: 1px solid rgba(255,69,40,.3); }
+    .badge-warn    { background: rgba(245,158,11,.15); color: var(--warn);   border: 1px solid rgba(245,158,11,.3); }
+    .badge-safe    { background: rgba(34,211,165,.15);  color: var(--safe);   border: 1px solid rgba(34,211,165,.3); }
+
+    #alerts-list { max-height: 280px; overflow-y: auto; }
+    .alert-row {
+      display: grid; grid-template-columns: 90px 1fr 80px;
+      align-items: center; gap: 12px;
+      padding: 11px 20px; border-bottom: 1px solid var(--border);
+      font-size: 13px; transition: background .15s;
+    }
+    .alert-row:hover { background: var(--surface2); }
+    .alert-row:last-child { border-bottom: none; }
+    .alert-time   { font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
+    .alert-msg    { color: var(--text); }
+    .no-alerts    { padding: 30px; text-align: center; color: var(--muted); font-family: var(--font-mono); font-size: 13px; }
+
+    /* ─── THRESHOLD PANEL ─── */
+    .threshold-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 14px;
+    }
+    .threshold-title { font-family: var(--font-mono); font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+    .threshold-group { display: flex; flex-direction: column; gap: 8px; }
+    .threshold-label { font-size: 12px; color: var(--muted); display: flex; justify-content: space-between; }
+    .threshold-inputs { display: flex; gap: 8px; }
+    .threshold-inputs input {
+      flex: 1; background: var(--surface2); border: 1px solid var(--border);
+      color: var(--text); padding: 7px 10px; border-radius: 6px;
+      font-family: var(--font-mono); font-size: 13px; width: 100%;
+      transition: border-color .2s;
+    }
+    .threshold-inputs input:focus { outline: none; border-color: var(--accent); }
+    .btn-save {
+      margin-top: 4px; padding: 10px; border-radius: 8px;
+      background: var(--accent); color: #fff; border: none;
+      font-family: var(--font-body); font-size: 14px; font-weight: 600;
+      cursor: pointer; transition: opacity .2s;
+    }
+    .btn-save:hover { opacity: .85; }
+    .save-msg { font-family: var(--font-mono); font-size: 11px; color: var(--safe); text-align: center; display: none; }
+
+    /* ─── SCROLLBAR ─── */
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  </style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- HEADER -->
+  <header>
+    <div class="logo">
+      <div class="logo-icon">🔥</div>
+      <div>
+        <div class="logo-text">FireGuard</div>
+        <div class="logo-sub">Smart Fire Detection System</div>
+      </div>
+    </div>
+    <div class="status-pill">
+      <div class="status-dot" id="conn-dot"></div>
+      <span id="conn-label">Connecting…</span>
+      <span style="color:var(--border)">|</span>
+      <span id="last-update" style="color:var(--muted)">—</span>
+    </div>
+  </header>
+
+  <main>
+
+    <!-- ALERT BANNER -->
+    <div id="alert-banner">
+      <div class="banner-icon" id="banner-icon">⚠️</div>
+      <div class="banner-msg">
+        <div class="banner-title" id="banner-title">WARNING</div>
+        <div class="banner-sub"  id="banner-sub">Elevated readings detected</div>
+      </div>
+    </div>
+
+    <!-- STAT CARDS -->
+    <div class="cards">
+      <div class="card">
+        <div class="card-accent" style="background:var(--accent)"></div>
+        <div class="card-label">Temperature</div>
+        <div class="card-value" id="val-temp">—<span class="card-unit">°C</span></div>
+        <div class="card-sub"   id="sub-temp">Humidity: —%</div>
+      </div>
+      <div class="card">
+        <div class="card-accent" style="background:var(--warn)"></div>
+        <div class="card-label">Smoke / Gas</div>
+        <div class="card-value" id="val-smoke">—<span class="card-unit">ppm</span></div>
+        <div class="card-sub"   id="sub-smoke">Raw ADC: —</div>
+      </div>
+      <div class="card">
+        <div class="card-accent" style="background:var(--blue)"></div>
+        <div class="card-label">Alert Status</div>
+        <div class="card-value" style="font-size:28px;padding-top:10px" id="val-status">NORMAL</div>
+        <div class="card-sub"   id="sub-device">Device: —</div>
+      </div>
+      <div class="card">
+        <div class="card-accent" style="background:var(--safe)"></div>
+        <div class="card-label">Alerts (24h)</div>
+        <div class="card-value" id="val-alerts">—</div>
+        <div class="card-sub"   id="sub-danger">Danger: —</div>
+      </div>
+    </div>
+
+    <!-- CHARTS -->
+    <div class="charts">
+      <div class="chart-card">
+        <div class="chart-title">Temperature & Humidity — Last 30 readings</div>
+        <canvas id="chart-temp" height="160"></canvas>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Smoke / Gas PPM — Last 30 readings</div>
+        <canvas id="chart-smoke" height="160"></canvas>
+      </div>
+    </div>
+
+    <!-- BOTTOM -->
+    <div class="bottom">
+
+      <!-- ALERTS TABLE -->
+      <div class="alerts-card">
+        <div class="table-header">
+          <span class="table-title">Recent Alert Events</span>
+          <button class="btn-save" style="padding:5px 14px;font-size:12px" onclick="loadAlerts()">Refresh</button>
+        </div>
+        <div id="alerts-list">
+          <div class="no-alerts">No alerts yet — system nominal</div>
+        </div>
+      </div>
+
+      <!-- THRESHOLDS -->
+      <div class="threshold-card">
+        <div class="threshold-title">Alert Thresholds</div>
+
+        <div class="threshold-group">
+          <div class="threshold-label">
+            <span>Temperature (°C)</span><span style="color:var(--muted);font-size:11px">warn / danger</span>
+          </div>
+          <div class="threshold-inputs">
+            <input type="number" id="t-temp-warn"   placeholder="Warn °C"   step="0.5">
+            <input type="number" id="t-temp-danger" placeholder="Danger °C" step="0.5">
+          </div>
+        </div>
+
+        <div class="threshold-group">
+          <div class="threshold-label">
+            <span>Smoke Raw (ADC)</span><span style="color:var(--muted);font-size:11px">warn / danger</span>
+          </div>
+          <div class="threshold-inputs">
+            <input type="number" id="t-smoke-warn"   placeholder="Warn" step="10">
+            <input type="number" id="t-smoke-danger" placeholder="Danger" step="10">
+          </div>
+        </div>
+
+        <div class="threshold-group">
+          <div class="threshold-label">
+            <span>Gas PPM</span><span style="color:var(--muted);font-size:11px">warn / danger</span>
+          </div>
+          <div class="threshold-inputs">
+            <input type="number" id="t-ppm-warn"   placeholder="Warn ppm" step="10">
+            <input type="number" id="t-ppm-danger" placeholder="Danger ppm" step="10">
+          </div>
+        </div>
+
+        <button class="btn-save" onclick="saveThresholds()">Save Thresholds</button>
+        <div class="save-msg" id="save-msg">✓ Thresholds updated</div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<script>
+  // ─── CHART SETUP ───────────────────────────────────────────────────────
+  const chartDefaults = {
+    responsive: true,
+    animation: false,
+    plugins: { legend: { labels: { color: '#6b7280', font: { family: 'DM Mono', size: 11 } } } },
+    scales: {
+      x: { ticks: { color: '#6b7280', font: { family: 'DM Mono', size: 10 } }, grid: { color: '#242830' } },
+      y: { ticks: { color: '#6b7280', font: { family: 'DM Mono', size: 10 } }, grid: { color: '#1a1d22' } },
+    }
+  };
+
+  const tempChart = new Chart(document.getElementById('chart-temp'), {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [
+        { label: 'Temp °C',   data: [], borderColor: '#ff4528', backgroundColor: 'rgba(255,69,40,.08)',  tension: .4, fill: true, pointRadius: 2 },
+        { label: 'Humidity %', data: [], borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,.06)', tension: .4, fill: true, pointRadius: 2 },
+      ]
+    },
+    options: { ...chartDefaults }
+  });
+
+  const smokeChart = new Chart(document.getElementById('chart-smoke'), {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [
+        { label: 'Smoke PPM', data: [], borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,.08)', tension: .4, fill: true, pointRadius: 2 },
+      ]
+    },
+    options: { ...chartDefaults }
+  });
+
+  // ─── DATA FETCH ────────────────────────────────────────────────────────
+  async function poll() {
+    try {
+      const [latest, stats] = await Promise.all([
+        fetch('/api/readings/latest').then(r => r.json()),
+        fetch('/api/stats').then(r => r.json()),
+      ]);
+
+      updateCards(latest, stats);
+      updateBanner(latest);
+      setConnected(true);
+    } catch (e) {
+      setConnected(false);
+    }
+  }
+
+  async function pollHistory() {
+    try {
+      const res  = await fetch('/api/readings?limit=30&hours=2');
+      const data = await res.json();
+      updateCharts(data.readings);
+    } catch(e) {}
+  }
+
+  async function loadAlerts() {
+    try {
+      const res  = await fetch('/api/alerts?limit=20');
+      const data = await res.json();
+      renderAlerts(data.alerts);
+    } catch(e) {}
+  }
+
+  async function loadThresholds() {
+    try {
+      const res  = await fetch('/api/thresholds');
+      const data = await res.json();
+      document.getElementById('t-temp-warn').value   = data.temp_warn;
+      document.getElementById('t-temp-danger').value = data.temp_danger;
+      document.getElementById('t-smoke-warn').value  = data.smoke_warn;
+      document.getElementById('t-smoke-danger').value= data.smoke_danger;
+      document.getElementById('t-ppm-warn').value    = data.gas_ppm_warn;
+      document.getElementById('t-ppm-danger').value  = data.gas_ppm_danger;
+    } catch(e) {}
+  }
+
+  async function saveThresholds() {
+    const body = {
+      temp_warn:     +document.getElementById('t-temp-warn').value,
+      temp_danger:   +document.getElementById('t-temp-danger').value,
+      smoke_warn:    +document.getElementById('t-smoke-warn').value,
+      smoke_danger:  +document.getElementById('t-smoke-danger').value,
+      gas_ppm_warn:  +document.getElementById('t-ppm-warn').value,
+      gas_ppm_danger:+document.getElementById('t-ppm-danger').value,
+    };
+    try {
+      await fetch('/api/thresholds', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+      const msg = document.getElementById('save-msg');
+      msg.style.display = 'block';
+      setTimeout(() => msg.style.display = 'none', 2500);
+    } catch(e) { alert('Failed to save thresholds'); }
+  }
+
+  // ─── UI UPDATES ────────────────────────────────────────────────────────
+  function updateCards(latest, stats) {
+    if (latest.error) return;
+    document.getElementById('val-temp').innerHTML   = `${latest.temperature}<span class="card-unit">°C</span>`;
+    document.getElementById('sub-temp').textContent = `Humidity: ${latest.humidity}%`;
+    document.getElementById('val-smoke').innerHTML  = `${parseFloat(latest.smoke_ppm).toFixed(1)}<span class="card-unit">ppm</span>`;
+    document.getElementById('sub-smoke').textContent= `Raw ADC: ${latest.smoke_raw}`;
+    document.getElementById('val-status').textContent = latest.alert_label;
+    document.getElementById('sub-device').textContent = `Device: ${latest.device_id}`;
+    document.getElementById('val-alerts').textContent = stats.alerts_24h ?? '—';
+    document.getElementById('sub-danger').textContent = `Danger: ${stats.danger_24h ?? '—'}`;
+    document.getElementById('last-update').textContent = new Date().toLocaleTimeString();
+
+    // Color status
+    const statusEl = document.getElementById('val-status');
+    statusEl.style.color = latest.alert_level === 2 ? 'var(--accent)' : latest.alert_level === 1 ? 'var(--warn)' : 'var(--safe)';
+  }
+
+  function updateBanner(latest) {
+    const banner = document.getElementById('alert-banner');
+    if (!latest || latest.error || latest.alert_level === 0) {
+      banner.classList.remove('show');
+      return;
+    }
+    banner.classList.add('show');
+    if (latest.alert_level === 2) {
+      document.getElementById('banner-icon').textContent  = '🚨';
+      document.getElementById('banner-title').textContent = 'DANGER — FIRE RISK DETECTED';
+      banner.style.borderColor = 'var(--accent)';
+    } else {
+      document.getElementById('banner-icon').textContent  = '⚠️';
+      document.getElementById('banner-title').textContent = 'WARNING — Elevated Readings';
+      banner.style.borderColor = 'var(--warn)';
+    }
+    document.getElementById('banner-sub').textContent =
+      `${latest.location} | Temp: ${latest.temperature}°C | Smoke: ${parseFloat(latest.smoke_ppm).toFixed(1)} ppm`;
+  }
+
+  function updateCharts(readings) {
+    if (!readings || !readings.length) return;
+    const labels = readings.map(r => r.timestamp.slice(11,16));
+    tempChart.data.labels                = labels;
+    tempChart.data.datasets[0].data      = readings.map(r => r.temperature);
+    tempChart.data.datasets[1].data      = readings.map(r => r.humidity);
+    smokeChart.data.labels               = labels;
+    smokeChart.data.datasets[0].data     = readings.map(r => parseFloat(r.smoke_ppm).toFixed(2));
+    tempChart.update();
+    smokeChart.update();
+  }
+
+  function renderAlerts(alerts) {
+    const list = document.getElementById('alerts-list');
+    if (!alerts || !alerts.length) {
+      list.innerHTML = '<div class="no-alerts">No alerts — system nominal ✓</div>';
+      return;
+    }
+    list.innerHTML = alerts.map(a => `
+      <div class="alert-row">
+        <span class="alert-time">${a.timestamp.slice(11,16)}</span>
+        <span class="alert-msg">${a.message}</span>
+        <span class="badge badge-${a.alert_level === 2 ? 'danger' : 'warn'}">${a.alert_label}</span>
+      </div>
+    `).join('');
+  }
+
+  function setConnected(ok) {
+    document.getElementById('conn-dot').style.background  = ok ? 'var(--safe)' : 'var(--accent)';
+    document.getElementById('conn-label').textContent     = ok ? 'Live' : 'Offline';
+  }
+
+  // ─── INIT ──────────────────────────────────────────────────────────────
+  loadThresholds();
+  loadAlerts();
+  poll();
+  pollHistory();
+
+  setInterval(poll,        5000);   // latest reading every 5s
+  setInterval(pollHistory, 15000);  // chart history every 15s
+  setInterval(loadAlerts,  30000);  // alerts every 30s
+</script>
+</body>
+</html>
